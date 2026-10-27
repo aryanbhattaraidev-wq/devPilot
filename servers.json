@@ -1,9 +1,20 @@
 {
   "servers": {
+    "github": {
+      "transport": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "devpilot.servers.github_server"
+      ]
+    },
     "demo-stdio": {
       "transport": "stdio",
       "command": "python",
-      "args": ["-m", "devpilot.servers.demo_stdio"]
+      "args": [
+        "-m",
+        "devpilot.servers.demo_stdio"
+      ]
     },
     "demo-http": {
       "transport": "streamable-http",
