@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp_types import ToolAnnotations
 from mcp.server.mcpserver.exceptions import ToolError
 
 from devpilot.config import Settings
@@ -32,7 +33,7 @@ def _resolve(path: str) -> Path:
         raise ToolError(str(exc)) from exc
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def list_directory(path: str = ".") -> list[dict]:
     """List files and folders in a directory (relative to the project root)."""
     target = _resolve(path)
@@ -54,7 +55,7 @@ def list_directory(path: str = ".") -> list[dict]:
     return entries
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> dict:
     """Read a text file, optionally a 1-based inclusive line range (max 400 lines per call)."""
     target = _resolve(path)
@@ -78,7 +79,7 @@ def read_file(path: str, start_line: int = 1, end_line: int | None = None) -> di
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def search_files(
     pattern: str, glob: str = "*", ignore_case: bool = True, max_results: int = 50
 ) -> list[dict]:

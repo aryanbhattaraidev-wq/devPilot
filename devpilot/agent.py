@@ -25,6 +25,7 @@ from typing import Any
 
 import openai
 
+from devpilot.approval import ApprovalGate
 from devpilot.client.manager import MCPClientManager
 
 MAX_TOOL_RESULT_CHARS = 20_000
@@ -62,6 +63,7 @@ class ToolCallRecord:
     arguments: dict
     result: str
     is_error: bool
+    denied: bool = False  # the user (or policy) refused to run it
 
 
 @dataclass
@@ -117,8 +119,11 @@ class Agent:
         default_repo: str = "",
         on_tool_call: OnToolCall | None = None,
         on_tool_result: OnToolResult | None = None,
+        gate: ApprovalGate | None = None,
     ):
         self.manager = manager
+        # Default gate denies every sensitive call: forgetting to wire approval fails safe.
+        self.gate = gate or ApprovalGate(manager)
         self.client = client
         self.model = model
         self.system = SYSTEM_PROMPT.format(today=date.today().isoformat(), repo=default_repo or "(none)")
@@ -135,6 +140,18 @@ class Agent:
             args = json.loads(call.function.arguments or "{}")
             if not isinstance(args, dict):
                 raise ValueError("arguments must be a JSON object")
+            verdict = await self.gate.check(name, args)
+            if not verdict.allowed:
+                # Tell the model plainly, so it explains to the user instead of retrying.
+                text = (
+                    f"DENIED: the user did not approve '{name}'. It was NOT executed."
+                    + (f" Reason: {verdict.note}." if verdict.note else "")
+                    + " Do not retry it; tell the user it was not done and offer alternatives."
+                )
+                if self.on_tool_result:
+                    await _maybe_await(self.on_tool_result(name, text, True))
+                message = {"role": "tool", "tool_call_id": call.id, "content": text}
+                return message, ToolCallRecord(name, args, text, True, denied=True)
             if self.on_tool_call:
                 await _maybe_await(self.on_tool_call(name, args))
             result = await self.manager.call_tool(name, args)

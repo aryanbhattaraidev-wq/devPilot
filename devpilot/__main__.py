@@ -6,9 +6,16 @@ import json
 import logging
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from devpilot.agent import Agent, format_args, make_client
+from devpilot.approval import (
+    ApprovalDecision,
+    ApprovalGate,
+    ApprovalRequest,
+    approve_all,
+)
 from devpilot.client.manager import MCPClientManager, ServerStatus
 from devpilot.config import Settings, load_config
 
@@ -41,7 +48,32 @@ def render(manager: MCPClientManager) -> None:
     console.print(f"[bold]{len(manager.tools())}[/bold] tools available")
 
 
-def build_agent(manager: MCPClientManager) -> Agent:
+async def cli_approver(req: ApprovalRequest) -> ApprovalDecision:
+    """Ask the human in the terminal. No answer (EOF / Ctrl+C) counts as 'no'."""
+    border = "red" if req.destructive else "yellow"
+    console.print(
+        Panel(
+            "\n".join([req.tool_name, format_args(req.arguments), "", f"why approval: {req.reason}"]),
+            title="Approval needed",
+            border_style=border,
+        ),
+        markup=False,
+        highlight=False,
+    )
+    options = "y = yes, n = no" + ("" if req.destructive else ", a = always allow this session")
+    try:
+        answer = await asyncio.to_thread(console.input, f"Allow? ({options}) ")
+    except (EOFError, KeyboardInterrupt):
+        return ApprovalDecision(False, note="no response from the user")
+    answer = answer.strip().lower()
+    if answer in ("y", "yes"):
+        return ApprovalDecision(True)
+    if answer in ("a", "always") and not req.destructive:
+        return ApprovalDecision(True, remember=True)
+    return ApprovalDecision(False, note="the user declined")
+
+
+def build_agent(manager: MCPClientManager, auto_approve: bool = False) -> Agent:
     settings = Settings()
     if not settings.llm_api_key:
         raise SystemExit("No LLM key: set OPENROUTER_API_KEY (or LLM_API_KEY) in .env.")
@@ -60,6 +92,7 @@ def build_agent(manager: MCPClientManager) -> Agent:
         default_repo=settings.github_repo,
         on_tool_call=show_call,
         on_tool_result=show_result,
+        gate=ApprovalGate(manager, approve_all if auto_approve else cli_approver),
     )
 
 
@@ -81,7 +114,9 @@ async def run(args: argparse.Namespace) -> None:
         return await run_index()
     async with MCPClientManager(load_config(args.config)) as manager:
         if args.command in ("ask", "chat"):
-            agent = build_agent(manager)
+            agent = build_agent(manager, args.auto_approve)
+            if args.auto_approve:
+                console.print("[bold red]--auto-approve: sensitive actions will run WITHOUT asking[/bold red]")
             ok = [s for s in manager.servers() if s.status is ServerStatus.CONNECTED]
             console.print(f"[dim]{len(ok)} servers, {len(manager.tools())} tools, model {agent.model}[/dim]")
             if args.command == "ask":
@@ -117,6 +152,9 @@ def main() -> None:
     logging.basicConfig(level=logging.WARNING)
     p = argparse.ArgumentParser(prog="devpilot")
     p.add_argument("--config", default="servers.json")
+    p.add_argument(
+        "--auto-approve", action="store_true", help="run sensitive tools without asking (dangerous)"
+    )
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("servers", help="connect to all servers and list their tools")
     c = sub.add_parser("call", help="call one tool by qualified name (server__tool) with JSON args")

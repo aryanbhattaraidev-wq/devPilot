@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 from mcp.server import MCPServer
+from mcp_types import ToolAnnotations
 from mcp.server.mcpserver.exceptions import ToolError
 
 from devpilot.config import Settings
@@ -47,7 +48,7 @@ async def _ensure_fresh() -> str | None:
     return str(report)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 async def search_docs(query: str, limit: int = 5) -> dict:
     """Semantic (meaning-based) search over project docs and code.
 
@@ -65,7 +66,7 @@ async def search_docs(query: str, limit: int = 5) -> dict:
     return {"query": query, "results": hits}
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False))
 async def reindex_docs() -> dict:
     """Force a re-scan of the project; only changed files are re-embedded."""
     global _last_sync

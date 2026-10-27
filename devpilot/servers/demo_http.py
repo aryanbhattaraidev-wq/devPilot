@@ -9,17 +9,18 @@ separately and can be reached by any number of clients at http://host:port/mcp.
 import random
 
 from mcp.server import MCPServer
+from mcp_types import ToolAnnotations
 
 mcp = MCPServer("demo-http")
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def roll_dice(sides: int = 6) -> int:
     """Roll a die with the given number of sides."""
     return random.randint(1, sides)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def word_count(text: str) -> int:
     """Count the words in a piece of text."""
     return len(text.split())

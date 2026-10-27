@@ -46,3 +46,18 @@ async def test_repo_is_required_when_no_default():
     gh = GitHubClient("tok", "", transport=httpx.MockTransport(lambda r: httpx.Response(200, json={})))
     with pytest.raises(GitHubError, match="owner/name"):
         await gh.get_repo()
+
+
+async def test_search_always_sends_a_type_qualifier():
+    queries = []
+
+    def handler(req: httpx.Request):
+        queries.append(req.url.params["q"])
+        return httpx.Response(200, json={"items": [issue(1)]})
+
+    gh = client(handler)
+    await gh.search_issues("dark mode")
+    await gh.search_issues("fix", kind="pr")
+    assert queries == ["dark mode repo:o/r is:issue", "fix repo:o/r is:pull-request"]
+    with pytest.raises(GitHubError, match="kind"):
+        await gh.search_issues("x", kind="repo")

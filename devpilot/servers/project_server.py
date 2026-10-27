@@ -11,6 +11,7 @@ Shows all three MCP server primitives side by side:
 import json
 
 from mcp.server import MCPServer
+from mcp_types import ToolAnnotations
 from mcp.server.mcpserver.exceptions import ToolError
 
 from devpilot.config import Settings
@@ -38,7 +39,7 @@ def _guard(fn, *args, **kwargs):
 # ---- tools -------------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False))
 def create_task(
     title: str,
     description: str = "",
@@ -50,7 +51,7 @@ def create_task(
     return _guard(db.create_task, title, description, priority, github_issue, due_date)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def list_tasks(
     status: str | None = None,
     priority: str | None = None,
@@ -62,13 +63,13 @@ def list_tasks(
     return _guard(db.list_tasks, status, priority, github_issue, include_done, limit)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def get_task(task_id: int) -> dict:
     """Get one task with all of its notes."""
     return _guard(db.get_task, task_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False))
 def update_task(
     task_id: int,
     title: str | None = None,
@@ -85,19 +86,19 @@ def update_task(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=False))
 def delete_task(task_id: int) -> dict:
     """Permanently delete a task and its notes. This cannot be undone."""
     return _guard(db.delete_task, task_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False))
 def add_note(content: str, task_id: int | None = None) -> dict:
     """Add a free-form note, optionally attached to a task."""
     return _guard(db.add_note, content, task_id)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=False))
 def project_summary() -> dict:
     """Counts of tasks by status and of open tasks by priority."""
     return db.summary()

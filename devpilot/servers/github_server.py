@@ -11,6 +11,7 @@ host never passes it over the protocol and it never appears in servers.json.
 import logging
 
 from mcp.server import MCPServer
+from mcp_types import ToolAnnotations
 from mcp.server.mcpserver.exceptions import ToolError
 
 from devpilot.github_api import GitHubClient, GitHubError, Settings
@@ -41,13 +42,13 @@ async def _guard(coro):
         raise ToolError(str(exc)) from exc
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
 async def get_repo(repo: str | None = None) -> dict:
     """Get repository metadata: description, default branch, language, open issue count."""
     return await _guard(gh.get_repo(repo))
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
 async def list_issues(
     repo: str | None = None, state: str = "open", labels: str = "", limit: int = 30
 ) -> list[dict]:
@@ -58,13 +59,13 @@ async def list_issues(
     return await _guard(gh.list_issues(repo, state, labels, limit))
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
 async def get_issue(number: int, repo: str | None = None) -> dict:
     """Get one issue with its full body and recent comments."""
     return await _guard(gh.get_issue(number, repo))
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
 async def list_pull_requests(
     repo: str | None = None, state: str = "open", limit: int = 30
 ) -> list[dict]:
@@ -72,19 +73,21 @@ async def list_pull_requests(
     return await _guard(gh.list_pull_requests(repo, state, limit))
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
 async def get_pull_request(number: int, repo: str | None = None) -> dict:
     """Get one pull request with its body, merge status and diff size."""
     return await _guard(gh.get_pull_request(number, repo))
 
 
-@mcp.tool()
-async def search_issues(query: str, repo: str | None = None, limit: int = 20) -> list[dict]:
-    """Full-text search across issues and pull requests in the repository."""
-    return await _guard(gh.search_issues(query, repo, limit))
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
+async def search_issues(
+    query: str, repo: str | None = None, limit: int = 20, kind: str = "issue"
+) -> list[dict]:
+    """Full-text search in the repository. kind: 'issue' (default) or 'pr' for pull requests."""
+    return await _guard(gh.search_issues(query, repo, limit, kind))
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True))
 async def create_issue(
     title: str, body: str = "", labels: list[str] | None = None, repo: str | None = None
 ) -> dict:

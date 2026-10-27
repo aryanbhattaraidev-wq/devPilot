@@ -149,8 +149,13 @@ class GitHubClient:
     async def get_pull_request(self, number: int, repo: str | None = None) -> dict:
         return _pr(await self._request("GET", f"/repos/{self._repo(repo)}/pulls/{number}"), full=True)
 
-    async def search_issues(self, query: str, repo: str | None = None, limit: int = 20) -> list[dict]:
-        q = f"{query} repo:{self._repo(repo)}"
+    async def search_issues(
+        self, query: str, repo: str | None = None, limit: int = 20, kind: str = "issue"
+    ) -> list[dict]:
+        if kind not in ("issue", "pr"):
+            raise GitHubError("kind must be 'issue' or 'pr'")
+        # GitHub rejects searches without an explicit type qualifier (HTTP 422).
+        q = f"{query} repo:{self._repo(repo)} is:{'issue' if kind == 'issue' else 'pull-request'}"
         r = await self._request("GET", "/search/issues", params={"q": q, "per_page": min(limit, 100)})
         return [{**_issue(i), "is_pull_request": "pull_request" in i} for i in r["items"]]
 
