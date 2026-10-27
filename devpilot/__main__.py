@@ -160,6 +160,8 @@ def main() -> None:
     c = sub.add_parser("call", help="call one tool by qualified name (server__tool) with JSON args")
     c.add_argument("tool")
     c.add_argument("arguments", nargs="?", default="{}")
+    sv = sub.add_parser("serve", help="run the HTTP API for the web UI")
+    sv.add_argument("--port", type=int, default=8000)
     sub.add_parser("index", help="build or refresh the documentation search index")
     r = sub.add_parser("read", help="read an MCP resource, e.g. read project project://summary")
     r.add_argument("server")
@@ -171,7 +173,15 @@ def main() -> None:
     a = sub.add_parser("ask", help="ask one question; the AI chooses which tools to call")
     a.add_argument("question")
     sub.add_parser("chat", help="interactive conversation")
-    asyncio.run(run(p.parse_args()))
+    args = p.parse_args()
+    if args.command == "serve":
+        import uvicorn
+
+        from devpilot.api import create_app
+
+        uvicorn.run(create_app(args.config), host="127.0.0.1", port=args.port, log_level="warning")
+        return
+    asyncio.run(run(args))
 
 
 if __name__ == "__main__":

@@ -25,6 +25,30 @@ then answers from real data.
 - `uv run devpilot call github__list_issues '{"state":"open"}'` calls one tool directly.
 - `uv run devpilot read project project://summary` reads an MCP resource.
 
+## Web UI
+
+Run the API and the chat UI in two terminals:
+
+    uv run devpilot serve
+    uv run streamlit run ui/app.py
+
+The API binds to localhost only and has no authentication, so run it on your own machine.
+Sensitive actions appear in the chat as Approve / Deny buttons.
+
+## Approvals
+
+Tools are annotated by their servers as read-only, destructive, or touching the outside world.
+DevPilot decides what needs your approval and enforces it before the tool runs:
+
+- Read-only tools run freely.
+- Destructive tools, and tools with no annotations, ask every time.
+- Non-destructive changes that others can see (creating a GitHub issue) ask, and you can
+  choose "always allow this session".
+- Local non-destructive changes (adding a task) run without asking.
+
+A denied action is reported to the model, which tells you it was not done. In the terminal,
+`--auto-approve` skips every prompt; use it only for scripts you trust.
+
 ## Configuration
 
 Servers are listed in `servers.json`. A server is either `stdio` (DevPilot starts it as a
