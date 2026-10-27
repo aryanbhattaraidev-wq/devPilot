@@ -23,16 +23,20 @@ STATUS_STYLE = {
 
 def render(manager: MCPClientManager) -> None:
     table = Table(title="MCP servers")
-    for col in ("Server", "Transport", "Status", "Tools / Error"):
+    for col in ("Server", "Transport", "Status", "Res", "Prompts", "Tools / Error"):
         table.add_column(col)
     for s in manager.servers():
         style = STATUS_STYLE[s.status]
-        detail = (
-            ", ".join(t.name for t in s.tools)
-            if s.status is ServerStatus.CONNECTED
-            else (s.error or "")
+        up = s.status is ServerStatus.CONNECTED
+        detail = ", ".join(t.name for t in s.tools) if up else (s.error or "")
+        table.add_row(
+            s.name,
+            s.transport,
+            f"[{style}]{s.status}[/{style}]",
+            str(len(s.resources) + len(s.templates)) if up else "",
+            str(len(s.prompts)) if up else "",
+            detail,
         )
-        table.add_row(s.name, s.transport, f"[{style}]{s.status}[/{style}]", detail)
     console.print(table)
     console.print(f"[bold]{len(manager.tools())}[/bold] tools available")
 
@@ -82,6 +86,10 @@ async def run(args: argparse.Namespace) -> None:
                     console.print((await agent.ask(question)).text)
             return
         render(manager)
+        if args.command == "read":
+            console.print(await manager.read_resource(args.server, args.uri))
+        if args.command == "prompt":
+            console.print(await manager.get_prompt(args.server, args.name, json.loads(args.arguments)))
         if args.command == "call":
             result = await manager.call_tool(args.tool, json.loads(args.arguments))
             for block in result.content:
@@ -99,6 +107,13 @@ def main() -> None:
     c = sub.add_parser("call", help="call one tool by qualified name (server__tool) with JSON args")
     c.add_argument("tool")
     c.add_argument("arguments", nargs="?", default="{}")
+    r = sub.add_parser("read", help="read an MCP resource, e.g. read project project://summary")
+    r.add_argument("server")
+    r.add_argument("uri")
+    pr = sub.add_parser("prompt", help="render an MCP prompt template")
+    pr.add_argument("server")
+    pr.add_argument("name")
+    pr.add_argument("arguments", nargs="?", default="{}")
     a = sub.add_parser("ask", help="ask one question; the AI chooses which tools to call")
     a.add_argument("question")
     sub.add_parser("chat", help="interactive conversation")

@@ -8,6 +8,14 @@
         "devpilot.servers.github_server"
       ]
     },
+    "project": {
+      "transport": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "devpilot.servers.project_server"
+      ]
+    },
     "demo-stdio": {
       "transport": "stdio",
       "command": "python",

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     llm_api_key: str = Field("", validation_alias=AliasChoices("LLM_API_KEY", "OPENROUTER_API_KEY"))
     llm_base_url: str = "https://openrouter.ai/api/v1"
     devpilot_model: str = "openai/gpt-4o-mini"  # must support tool calling
+    devpilot_db: str = str(ROOT / "devpilot.db")  # SQLite file for the project server
 
 
 class StdioServerConfig(BaseModel):

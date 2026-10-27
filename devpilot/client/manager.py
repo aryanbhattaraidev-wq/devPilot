@@ -47,6 +47,21 @@ class ServerState:
     status: ServerStatus = ServerStatus.CONNECTING
     error: str | None = None
     tools: list[types.Tool] = field(default_factory=list)
+    resources: list[types.Resource] = field(default_factory=list)
+    templates: list[types.ResourceTemplate] = field(default_factory=list)
+    prompts: list[types.Prompt] = field(default_factory=list)
+
+
+async def _items(call, attr: str) -> list:
+    return getattr(await call, attr)
+
+
+async def _optional(call) -> list:
+    """Resources and prompts are optional server capabilities; absence is not a failure."""
+    try:
+        return await call
+    except Exception:  # noqa: BLE001 - "method not found" etc. just means "none"
+        return []
 
 
 def _root_cause(exc: BaseException) -> str:
@@ -96,6 +111,14 @@ class ServerConnection:
                 tools = (await client.list_tools()).tools  # dynamic discovery
                 self.client = client
                 self.state.tools = tools
+                caps = client.server_capabilities
+                if caps.resources:
+                    self.state.resources = await _optional(_items(client.list_resources(), "resources"))
+                    self.state.templates = await _optional(
+                        _items(client.list_resource_templates(), "resource_templates")
+                    )
+                if caps.prompts:
+                    self.state.prompts = await _optional(_items(client.list_prompts(), "prompts"))
                 self.state.status = ServerStatus.CONNECTED
                 self._ready.set()
                 await self._stop.wait()
@@ -162,6 +185,23 @@ class MCPClientManager:
             if s.status is ServerStatus.CONNECTED
             for t in s.tools
         ]
+
+    def _client(self, server: str) -> Client:
+        conn = self._connections.get(server)
+        if conn is None or conn.client is None:
+            state = conn.state if conn else None
+            raise ConnectionError(f"server {server!r} is not connected ({state.error if state else 'unknown'})")
+        return conn.client
+
+    async def read_resource(self, server: str, uri: str) -> str:
+        """Resources are application-controlled context: the host decides when to load them."""
+        result = await self._client(server).read_resource(uri)
+        return "\n".join(getattr(c, "text", None) or f"<binary {c.mime_type}>" for c in result.contents)
+
+    async def get_prompt(self, server: str, name: str, arguments: dict[str, str] | None = None) -> str:
+        """Prompts are user-controlled templates; this returns their rendered text."""
+        result = await self._client(server).get_prompt(name, arguments or {})
+        return "\n".join(getattr(m.content, "text", str(m.content)) for m in result.messages)
 
     async def call_tool(
         self, qualified_name: str, arguments: dict | None = None
