@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,8 +17,10 @@ class Settings(BaseSettings):
 
     github_token: str = ""
     github_repo: str = ""  # default "owner/repo" when a tool call omits one
-    anthropic_api_key: str = ""
-    devpilot_model: str = "claude-opus-5-5"
+    # Any OpenAI-compatible endpoint: OpenRouter (default), OpenAI, a local Ollama, ...
+    llm_api_key: str = Field("", validation_alias=AliasChoices("LLM_API_KEY", "OPENROUTER_API_KEY"))
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    devpilot_model: str = "openai/gpt-4o-mini"  # must support tool calling
 
 
 class StdioServerConfig(BaseModel):

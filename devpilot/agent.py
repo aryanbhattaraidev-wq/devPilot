@@ -4,13 +4,16 @@ This is the "host" in MCP terms. The loop is the whole trick:
 
     1. Show the model every tool the connected MCP servers expose (names,
        descriptions, JSON Schemas -- discovered at runtime, nothing hard-coded).
-    2. The model replies with text and/or ``tool_use`` blocks. *It* chooses
-       which tools to call and with what arguments, based on the question.
+    2. The model replies with text and/or tool calls. *It* chooses which tools
+       to call and with what arguments, based on the question.
     3. We route each call to the owning MCP server, and feed results back as
-       ``tool_result`` blocks.
+       ``tool`` messages.
     4. Repeat until the model answers without asking for more tools.
 
 The model never talks to MCP directly; the host translates in both directions.
+MCP is the protocol between host and tool servers; the host<->LLM leg uses whatever
+the LLM vendor speaks -- here the OpenAI-compatible chat API (OpenRouter, OpenAI,
+Ollama, ...), selected by ``LLM_BASE_URL``.
 """
 
 import asyncio
@@ -20,12 +23,13 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-import anthropic
+import openai
 
 from devpilot.client.manager import MCPClientManager
 
 MAX_TOOL_RESULT_CHARS = 20_000
 MAX_ITERATIONS = 12
+MAX_OUTPUT_TOKENS = 4096
 
 SYSTEM_PROMPT = """\
 You are DevPilot, an AI assistant that helps developers manage their software projects.
@@ -42,7 +46,6 @@ so plainly rather than inventing data.
 Today's date is {today}. The default GitHub repository is {repo}.
 """
 
-# Called as (tool_name, arguments) just before a tool runs, and (tool_name, text, is_error) after.
 OnToolCall = Callable[[str, dict], Awaitable[None] | None]
 OnToolResult = Callable[[str, str, bool], Awaitable[None] | None]
 
@@ -63,18 +66,21 @@ class AgentResult:
     stop_reason: str | None = None
 
 
-def to_anthropic_tools(manager: MCPClientManager) -> list[dict[str, Any]]:
-    """MCP tool definitions -> Anthropic tool definitions.
+def to_llm_tools(manager: MCPClientManager) -> list[dict[str, Any]]:
+    """MCP tool definitions -> OpenAI-style function definitions.
 
-    The two formats are nearly identical on purpose: both use JSON Schema. The only
-    work is a rename (MCP ``input_schema`` is Anthropic's ``input_schema`` too) and
-    using the namespaced name so a call can be routed back to its server.
+    Both sides describe arguments with JSON Schema, so the work is re-wrapping:
+    MCP ``input_schema`` becomes the function's ``parameters``. The name is the
+    namespaced ``server__tool`` so a call can be routed back to its server.
     """
     return [
         {
-            "name": ref.qualified_name,
-            "description": ref.tool.description or "",
-            "input_schema": ref.tool.input_schema,
+            "type": "function",
+            "function": {
+                "name": ref.qualified_name,
+                "description": ref.tool.description or "",
+                "parameters": ref.tool.input_schema,
+            },
         }
         for ref in manager.tools()
     ]
@@ -115,52 +121,65 @@ class Agent:
         # The API is stateless: this list *is* the conversation. Kept across ask() calls.
         self.messages: list[dict[str, Any]] = []
 
-    async def _run_tool(self, block: Any) -> tuple[dict[str, Any], ToolCallRecord]:
-        args = dict(block.input or {})
-        if self.on_tool_call:
-            await _maybe_await(self.on_tool_call(block.name, args))
+    async def _run_tool(self, call: Any) -> tuple[dict[str, Any], ToolCallRecord]:
+        name = call.function.name
+        args: dict = {}
         try:
-            result = await self.manager.call_tool(block.name, args)
+            # Arguments arrive as a JSON *string* in this API and models sometimes botch it.
+            args = json.loads(call.function.arguments or "{}")
+            if not isinstance(args, dict):
+                raise ValueError("arguments must be a JSON object")
+            if self.on_tool_call:
+                await _maybe_await(self.on_tool_call(name, args))
+            result = await self.manager.call_tool(name, args)
             text, is_error = _result_text(result), bool(result.is_error)
-        except Exception as exc:  # unknown tool, dead server, ... -> let the model adapt
+        except Exception as exc:  # bad JSON, unknown tool, dead server... -> let the model adapt
             text, is_error = f"{type(exc).__name__}: {exc}", True
         if self.on_tool_result:
-            await _maybe_await(self.on_tool_result(block.name, text, is_error))
-        message_block: dict[str, Any] = {
-            "type": "tool_result",
-            "tool_use_id": block.id,  # must echo the tool_use block's id
-            "content": text or "(empty result)",
-        }
-        if is_error:
-            message_block["is_error"] = True
-        return message_block, ToolCallRecord(block.name, args, text, is_error)
+            await _maybe_await(self.on_tool_result(name, text, is_error))
+        message = {"role": "tool", "tool_call_id": call.id, "content": text or "(empty result)"}
+        return message, ToolCallRecord(name, args, text, is_error)
 
     async def ask(self, question: str) -> AgentResult:
         self.messages.append({"role": "user", "content": question})
-        tools = to_anthropic_tools(self.manager)
+        tools = to_llm_tools(self.manager)
         calls: list[ToolCallRecord] = []
 
         for iteration in range(1, MAX_ITERATIONS + 1):
-            response = await self.client.messages.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
-                max_tokens=16000,
-                system=self.system,
-                tools=tools,
-                messages=self.messages,
+                max_tokens=MAX_OUTPUT_TOKENS,
+                messages=[{"role": "system", "content": self.system}, *self.messages],
+                **({"tools": tools} if tools else {}),
             )
-            # Keep the assistant turn exactly as returned (incl. thinking blocks).
-            self.messages.append({"role": "assistant", "content": response.content})
+            choice = response.choices[0]
+            msg = choice.message
+            tool_calls = list(msg.tool_calls or [])
 
-            tool_uses = [b for b in response.content if b.type == "tool_use"]
-            if response.stop_reason != "tool_use" or not tool_uses:
-                text = "\n".join(b.text for b in response.content if b.type == "text")
-                if response.stop_reason == "refusal":
-                    text = text or "The model declined to answer this request."
-                return AgentResult(text, calls, iteration, response.stop_reason)
+            assistant: dict[str, Any] = {"role": "assistant", "content": msg.content}
+            if tool_calls:
+                assistant["tool_calls"] = [
+                    {
+                        "id": c.id,
+                        "type": "function",
+                        "function": {"name": c.function.name, "arguments": c.function.arguments},
+                    }
+                    for c in tool_calls
+                ]
+            self.messages.append(assistant)
 
-            # Independent calls run concurrently; ALL results go back in ONE user message.
-            outcomes = await asyncio.gather(*(self._run_tool(b) for b in tool_uses))
-            self.messages.append({"role": "user", "content": [o[0] for o in outcomes]})
+            if not tool_calls:
+                text = msg.content or ""
+                if choice.finish_reason == "length":
+                    text += "\n[response cut off: output token limit reached]"
+                elif choice.finish_reason == "content_filter" and not text:
+                    text = "The model declined to answer this request."
+                return AgentResult(text, calls, iteration, choice.finish_reason)
+
+            # Independent calls run concurrently; each result is its own `tool` message,
+            # appended in the same order as the calls.
+            outcomes = await asyncio.gather(*(self._run_tool(c) for c in tool_calls))
+            self.messages.extend(o[0] for o in outcomes)
             calls.extend(o[1] for o in outcomes)
 
         return AgentResult(
@@ -171,8 +190,8 @@ class Agent:
         )
 
 
-def make_client(api_key: str) -> anthropic.AsyncAnthropic:
-    return anthropic.AsyncAnthropic(api_key=api_key or None)  # None -> SDK env/profile resolution
+def make_client(api_key: str, base_url: str) -> openai.AsyncOpenAI:
+    return openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
 
 
 def format_args(args: dict) -> str:

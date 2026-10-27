@@ -39,8 +39,8 @@ def render(manager: MCPClientManager) -> None:
 
 def build_agent(manager: MCPClientManager) -> Agent:
     settings = Settings()
-    if not settings.anthropic_api_key:
-        raise SystemExit("ANTHROPIC_API_KEY is not set (add it to .env).")
+    if not settings.llm_api_key:
+        raise SystemExit("No LLM key: set OPENROUTER_API_KEY (or LLM_API_KEY) in .env.")
 
     def show_call(name: str, arguments: dict) -> None:
         console.print(f"[cyan]> {name}[/cyan] [dim]{format_args(arguments)}[/dim]")
@@ -51,7 +51,7 @@ def build_agent(manager: MCPClientManager) -> Agent:
 
     return Agent(
         manager,
-        make_client(settings.anthropic_api_key),
+        make_client(settings.llm_api_key, settings.llm_base_url),
         settings.devpilot_model,
         default_repo=settings.github_repo,
         on_tool_call=show_call,
