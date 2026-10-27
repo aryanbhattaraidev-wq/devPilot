@@ -5,6 +5,20 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class Settings(BaseSettings):
+    """Secrets and defaults, from the environment or the repo-root .env (never servers.json)."""
+
+    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
+
+    github_token: str = ""
+    github_repo: str = ""  # default "owner/repo" when a tool call omits one
+    anthropic_api_key: str = ""
+    devpilot_model: str = "claude-opus-5-5"
 
 
 class StdioServerConfig(BaseModel):

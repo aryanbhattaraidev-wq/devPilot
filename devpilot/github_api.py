@@ -6,22 +6,11 @@ Responses are trimmed to the fields an LLM actually needs: smaller context,
 fewer tokens, less noise.
 """
 
-from pathlib import Path
 from typing import Any
 
 import httpx
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ROOT = Path(__file__).resolve().parents[1]
-
-
-class Settings(BaseSettings):
-    """Loaded from the environment or the repo-root .env (never from servers.json)."""
-
-    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
-
-    github_token: str = ""
-    github_repo: str = ""  # default "owner/repo" when a tool call omits one
+from devpilot.config import Settings  # noqa: F401  (re-exported for the server and scripts)
 
 
 class GitHubError(Exception):
