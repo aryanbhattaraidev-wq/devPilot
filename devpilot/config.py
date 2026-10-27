@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     devpilot_model: str = "openai/gpt-4o-mini"  # must support tool calling
     devpilot_db: str = str(ROOT / "devpilot.db")  # SQLite file for the project server
+    # Project knowledge: what the filesystem and docs servers can see, and the vector index.
+    project_root: str = str(ROOT)
+    chroma_dir: str = str(ROOT / ".chroma")
+    embedding_model: str = "openai/text-embedding-3-small"
+    embedder: str = "api"  # "api" (real semantic embeddings) or "hash" (offline, for tests)
 
 
 class StdioServerConfig(BaseModel):

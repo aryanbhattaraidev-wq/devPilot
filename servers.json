@@ -16,6 +16,22 @@
         "devpilot.servers.project_server"
       ]
     },
+    "filesystem": {
+      "transport": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "devpilot.servers.filesystem_server"
+      ]
+    },
+    "docs": {
+      "transport": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "devpilot.servers.docs_server"
+      ]
+    },
     "demo-stdio": {
       "transport": "stdio",
       "command": "python",

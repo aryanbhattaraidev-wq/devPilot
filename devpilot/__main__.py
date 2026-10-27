@@ -63,14 +63,29 @@ def build_agent(manager: MCPClientManager) -> Agent:
     )
 
 
+async def run_index() -> None:
+    from pathlib import Path
+
+    from devpilot.rag.factory import build_store
+
+    settings = Settings()
+    if settings.embedder == "api" and not settings.llm_api_key:
+        raise SystemExit("No LLM key: set OPENROUTER_API_KEY (or LLM_API_KEY) in .env.")
+    store = build_store(settings)
+    console.print(f"indexing {settings.project_root} with {store.embedder.name} ...")
+    console.print(await store.sync(Path(settings.project_root)))
+
+
 async def run(args: argparse.Namespace) -> None:
+    if args.command == "index":
+        return await run_index()
     async with MCPClientManager(load_config(args.config)) as manager:
         if args.command in ("ask", "chat"):
             agent = build_agent(manager)
             ok = [s for s in manager.servers() if s.status is ServerStatus.CONNECTED]
             console.print(f"[dim]{len(ok)} servers, {len(manager.tools())} tools, model {agent.model}[/dim]")
             if args.command == "ask":
-                console.print((await agent.ask(args.question)).text)
+                console.print((await agent.ask(args.question)).text, markup=False, highlight=False)
             else:
                 console.print("[bold]DevPilot[/bold] - empty line or Ctrl+C to quit")
                 while True:
@@ -83,7 +98,7 @@ async def run(args: argparse.Namespace) -> None:
                     if not question.strip():
                         break
                     console.print()
-                    console.print((await agent.ask(question)).text)
+                    console.print((await agent.ask(question)).text, markup=False, highlight=False)
             return
         render(manager)
         if args.command == "read":
@@ -107,6 +122,7 @@ def main() -> None:
     c = sub.add_parser("call", help="call one tool by qualified name (server__tool) with JSON args")
     c.add_argument("tool")
     c.add_argument("arguments", nargs="?", default="{}")
+    sub.add_parser("index", help="build or refresh the documentation search index")
     r = sub.add_parser("read", help="read an MCP resource, e.g. read project project://summary")
     r.add_argument("server")
     r.add_argument("uri")
