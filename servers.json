@@ -1,0 +1,17 @@
+{
+  "servers": {
+    "demo-stdio": {
+      "transport": "stdio",
+      "command": "python",
+      "args": ["-m", "devpilot.servers.demo_stdio"]
+    },
+    "demo-http": {
+      "transport": "streamable-http",
+      "url": "http://127.0.0.1:8765/mcp"
+    },
+    "broken-stdio": {
+      "transport": "stdio",
+      "command": "definitely-not-a-real-command"
+    }
+  }
+}
