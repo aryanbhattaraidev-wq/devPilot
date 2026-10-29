@@ -5,6 +5,11 @@ An AI developer assistant built on the Model Context Protocol (MCP). Ask it thin
 connects to GitHub, your task database, and your project files and docs through MCP servers,
 then answers from real data.
 
+DevPilot is also a hands-on reference for the MCP architecture: stdio and streamable HTTP
+transports, tools/resources/prompts, failure isolation, RAG with Chroma, and a human-approval
+gate driven by tool annotations. See [docs/architecture.md](docs/architecture.md) for how the
+pieces fit together.
+
 ## Setup
 
 1. Install [uv](https://docs.astral.sh/uv/) and run `uv sync`.
